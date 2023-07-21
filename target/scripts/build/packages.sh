@@ -5,6 +5,9 @@
 # -o pipefail :: exit on error in pipes
 set -eE -u -o pipefail
 
+# shellcheck source=/dev/null
+source /etc/os-release
+
 # shellcheck source=../helpers/log.sh
 source /usr/local/bin/helpers/log.sh
 
@@ -27,7 +30,7 @@ function _pre_installation_steps() {
 function _install_postfix() {
   _log 'debug' 'Installing Postfix'
 
-  _log 'warn' 'Applying workaround for Postfix bug (see https://github.com//issues/2023#issuecomment-855326403)'
+  _log 'warn' 'Applying workaround for Postfix bug (see https://github.com/docker-mailserver/docker-mailserver/issues/2023#issuecomment-855326403)'
 
   # Debians postfix package has a post-install script that expects a valid FQDN hostname to work:
   mv /bin/hostname /bin/hostname.bak
@@ -103,7 +106,7 @@ function _install_dovecot() {
     _log 'trace' 'Using Dovecot community repository'
     curl https://repo.dovecot.org/DOVECOT-REPO-GPG | gpg --import
     gpg --export ED409DA1 > /etc/apt/trusted.gpg.d/dovecot.gpg
-    echo "deb https://repo.dovecot.org/ce-2.3-latest/debian/bullseye bullseye main" > /etc/apt/sources.list.d/dovecot.list
+    echo "deb https://repo.dovecot.org/ce-2.3-latest/debian/${VERSION_CODENAME} ${VERSION_CODENAME} main" >/etc/apt/sources.list.d/dovecot.list
 
     _log 'trace' 'Updating Dovecot package signatures'
     apt-get "${QUIET}" update
@@ -118,30 +121,15 @@ function _install_dovecot() {
 
 function _install_rspamd() {
   _log 'trace' 'Adding Rspamd package signatures'
-  local DEB_FILE='/etc/apt/sources.list.d/rspamd.list'
-  local RSPAMD_PACKAGE_NAME
 
-  # We try getting the most recent version of Rspamd for aarch64 (from an official source, which
-  # is the backports repository). The version for aarch64 is 3.2; the most recent version for amd64
-  # that we get with the official PPA is 3.4.
-  #
-  # Not removing it later is fine as you have to explicitly opt into installing a backports package
-  # which is not something you could be doing by accident.
-  if [[ $(uname --machine) == 'aarch64' ]]; then
-    echo '# Official Rspamd PPA does not support aarch64, so we use the Bullseye backports' >"${DEB_FILE}"
-    echo 'deb [arch=arm64] http://deb.debian.org/debian bullseye-backports main' >>"${DEB_FILE}"
-    RSPAMD_PACKAGE_NAME='rspamd/bullseye-backports'
-  else
+  if [[ $(uname --machine) == 'x86_64' ]]; then
     curl -sSfL https://rspamd.com/apt-stable/gpg.key | gpg --dearmor >/etc/apt/trusted.gpg.d/rspamd.gpg
-    local URL='[arch=amd64 signed-by=/etc/apt/trusted.gpg.d/rspamd.gpg] http://rspamd.com/apt-stable/ bullseye main'
-    echo "deb ${URL}" >"${DEB_FILE}"
-    echo "deb-src ${URL}" >>"${DEB_FILE}"
-    RSPAMD_PACKAGE_NAME='rspamd'
+    echo "deb [arch=amd64 signed-by=/etc/apt/trusted.gpg.d/rspamd.gpg] http://rspamd.com/apt-stable/ ${VERSION_CODENAME} main" >/etc/apt/sources.list.d/rspamd.list
   fi
 
   _log 'debug' 'Installing Rspamd'
   apt-get "${QUIET}" update
-  apt-get "${QUIET}" --no-install-recommends install "${RSPAMD_PACKAGE_NAME}" 'redis-server'
+  apt-get "${QUIET}" --no-install-recommends install rspamd redis-server
 }
 
 function _install_fail2ban() {
